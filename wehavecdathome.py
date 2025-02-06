@@ -202,6 +202,7 @@ def test():
             # If both stdout and stderr are empty, and the process is finished, break the loop
             if stdout_line == '' and stderr_line == '' and process.poll() is not None:
                 break
+        time.sleep(.1)
     except KeyboardInterrupt:
         print("\nProcess interrupted. Terminating...")
         process.terminate()
@@ -215,30 +216,7 @@ def test():
 @cli_function
 def host():
     """Use the conf.json file, to watch a repository, pull new versions automatically, and continuously re-deploy using the configured command."""
-    print_masthead()
-
-    config = load_config()
-    repo_dir = Path(SERVICES_DIR) / Path(config["repo_url"].split("/")[-1].replace(".git", ""))
-    if not repo_dir.exists():
-        print(f"Repository not found in {repo_dir}. Run setup first.")
-        return
-
-    def monitor_and_restart():
-        while True:
-            if poll_git_updates(repo_dir, config["branch"]):
-                print("Changes detected. Restarting service...")
-                process.terminate()
-                time.sleep(2)
-                process = subprocess.Popen(config.get("startup_cmd", "docker-compose up"), shell=True)
-            time.sleep(config["poll_period"])
-
-    process = subprocess.Popen(config.get("startup_cmd", "docker-compose up"), shell=True)
-    monitor_thread = threading.Thread(target=monitor_and_restart, daemon=True)
-    monitor_thread.start()
-    try:
-        process.wait()
-    except KeyboardInterrupt:
-        process.terminate()
+    # TODO: make this an overload of the "test" command, which also calls the "pull" command with printing disabled, and then scans its output for "no updates", if there are no updates, then do nothing, if there are updates, re-run the docker compose.
 
 @cli_function
 def view_config():
