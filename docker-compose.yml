@@ -1,0 +1,15 @@
+version: '3.8'
+
+# Note:  This doesn't need to do anything, its just here so that we can test this repository with itself.
+services:
+  web:
+    image: "nginx:alpine"
+    container_name: hello_world_nginx
+    ports:
+      - "8080:80"
+    networks:
+      - hello_world_network
+
+networks:
+  hello_world_network:
+    driver: bridge
