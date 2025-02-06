@@ -11,7 +11,7 @@ import subprocess
 
 # CONSTANTS:
 SERVICES_DIR = "wehavecdathome"
-CONFIG_FILE = f"{SERVICES_DIR}/cdathome.conf.json"
+CONFIG_FILE = f"{SERVICES_DIR}/wehavecdathome.conf.json"
 
 # ANSI color codes
 RESET = "\033[0m"
@@ -27,6 +27,18 @@ MAGENTA = "\033[35m"
 CYAN = "\033[36m"
 WHITE = "\033[37m"
 
+def print_masthead():
+    masthead = """
+    #     #           #     #                          #####  ######        #             #     #                      
+    #  #  # ######    #     #   ##   #    # ######    #     # #     #      # #   #####    #     #  ####  #    # ###### 
+    #  #  # #         #     #  #  #  #    # #         #       #     #     #   #    #      #     # #    # ##  ## #      
+    #  #  # #####     ####### #    # #    # #####     #       #     #    #     #   #      ####### #    # # ## # #####  
+    #  #  # #         #     # ###### #    # #         #       #     #    #######   #      #     # #    # #    # #      
+    #  #  # #         #     # #    #  #  #  #         #     # #     #    #     #   #      #     # #    # #    # #      
+     ## ##  ######    #     # #    #   ##   ######     #####  ######     #     #   #      #     #  ####  #    # ######                                                                                          
+    """
+    print(masthead)
+
 
 # UTILITY/HELPER FUNCTIONS:
 def load_config():
@@ -37,6 +49,11 @@ def load_config():
 
 
 def save_config(config):
+    dir_name = os.path.dirname(CONFIG_FILE)
+    if dir_name and not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+
+    print(f"saving config: {CONFIG_FILE}")
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
 
@@ -71,6 +88,8 @@ def poll_git_updates(repo_dir, branch):
 @cli_function
 def setup():
     """Interactive setup to gather and save configuration."""
+    print_masthead()
+
     try:
         config = load_config()
         print("config already exits.  Setup will over-write existing config:")
@@ -105,12 +124,14 @@ def setup():
     save_config(config)
     print(f"Configuration saved to {CONFIG_FILE}")
     print(f"{MAGENTA}{json.dumps(config, indent=4)}{RESET}")
-    print("You can now download/test/host this configuration.")
+    print("You can now [p]ull/[t]est/[h]ost this configuration.")
 
 
 @cli_function
 def pull():
-    """Pull updates for the repository."""
+    """Pull updates for the repository specified in the config."""
+
+    print_masthead()
     config = load_config()
     repo_name = config["repo_url"].split("/")[-1].replace(".git", "")
     repo_dir = Path(f"{SERVICES_DIR}/{repo_name}")
@@ -150,14 +171,52 @@ def pull():
 
 @cli_function
 def test():
-    """Run the startup command in verbose mode."""
+    """Run the command specified in the config, in the pulled repository, without any automatic reloading"""
+    print_masthead()
+
     config = load_config()
     startup_cmd = config.get("startup_cmd", "docker-compose up")
-    run_command(startup_cmd)
+
+    # Change directory to SERVICES_DIR before running the command
+    os.chdir(SERVICES_DIR)
+    print(f"Changed directory to {SERVICES_DIR}")
+
+    # Run the command and stream output to the console
+    print(f"Running command: {startup_cmd}")
+
+    # Using subprocess.Popen to stream output
+    process = subprocess.Popen(startup_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    # Continuously read the stdout and stderr and print it to the console
+    try:
+        while True:
+            # Read one line of output from stdout
+            stdout_line = process.stdout.readline()
+            stderr_line = process.stderr.readline()
+
+            if stdout_line:
+                sys.stdout.write(stdout_line)  # Print stdout line to the shell
+            if stderr_line:
+                sys.stderr.write(stderr_line)  # Print stderr line to the shell
+
+            # If both stdout and stderr are empty, and the process is finished, break the loop
+            if stdout_line == '' and stderr_line == '' and process.poll() is not None:
+                break
+    except KeyboardInterrupt:
+        print("\nProcess interrupted. Terminating...")
+        process.terminate()
+
+    process.stdout.close()
+    process.stderr.close()
+    process.wait()  # Ensure the process has fully completed
+
+    print("Command execution finished.")
 
 @cli_function
 def host():
-    """Start watching the repository and restart on updates."""
+    """Use the conf.json file, to watch a repository, pull new versions automatically, and continuously re-deploy using the configured command."""
+    print_masthead()
+
     config = load_config()
     repo_dir = Path(SERVICES_DIR) / Path(config["repo_url"].split("/")[-1].replace(".git", ""))
     if not repo_dir.exists():
@@ -184,19 +243,11 @@ def host():
 @cli_function
 def view_config():
     """Display the current configuration."""
+    print_masthead()
+
     config = load_config()
     print("Current Configuration:")
     print(f"{MAGENTA}{json.dumps(config, indent=4)}{RESET}")
 
 if __name__ == "__main__":
-    masthead = """
-    #     #           #     #                          #####  ######        #             #     #                      
-    #  #  # ######    #     #   ##   #    # ######    #     # #     #      # #   #####    #     #  ####  #    # ###### 
-    #  #  # #         #     #  #  #  #    # #         #       #     #     #   #    #      #     # #    # ##  ## #      
-    #  #  # #####     ####### #    # #    # #####     #       #     #    #     #   #      ####### #    # # ## # #####  
-    #  #  # #         #     # ###### #    # #         #       #     #    #######   #      #     # #    # #    # #      
-    #  #  # #         #     # #    #  #  #  #         #     # #     #    #     #   #      #     # #    # #    # #      
-     ## ##  ######    #     # #    #   ##   ######     #####  ######     #     #   #      #     #  ####  #    # ######                                                                                          
-    """
-    print(masthead)
     cli()
