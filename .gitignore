@@ -1,3 +1,9 @@
+# Ignore the "wehavecdathome" internal directory, as it is going to be continually populated for testing.
+wehavecdathome/*
+
+#Pycharm Stuff
+.idea/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
