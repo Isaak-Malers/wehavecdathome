@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wehavecdathome"
+version = "0.0.1"
+authors = [
+  { name="Isaak Malers", email="isaak.malers+wehavecdathome@gmail.com" },
+]
+description = "Quickly set up non production Continuous Delivery using Docker Compose"
+readme = "./README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Isaak-Malers/wehavecdathome"
+"Bug Tracker" = "https://github.com/Isaak-Malers/wehavecdathome/issues"
+"Documentation" = "https://github.com/Isaak-Malers/wehavecdathome"
+
+
+[tool.hatch.build]
+include = ["wehavecdathome.py"]
+exclude = [
+    "/wehavecdathome",
+]

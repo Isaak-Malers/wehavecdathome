@@ -1,5 +1,6 @@
 # Ignore the "wehavecdathome" internal directory, as it is going to be continually populated for testing.
 wehavecdathome/*
+wehavecdathome-test/*
 
 #Pycharm Stuff
 .idea/*

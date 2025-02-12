@@ -1,7 +1,7 @@
 import sys
+from typing import Callable
 
 from CliFunction import cli_function, cli
-import threading
 import time
 from pathlib import Path
 import json
@@ -128,7 +128,7 @@ def setup():
 
 
 @cli_function
-def pull():
+def pull() -> bool:
     """Pull updates for the repository specified in the config."""
 
     print_masthead()
@@ -150,23 +150,39 @@ def pull():
             clone_url = config["repo_url"]  # Assume public repo if no token is provided
 
         cmd = ["git", "clone", "-b", config["branch"], clone_url, str(repo_dir)]
+        print(f"Running command: {' '.join(cmd)}")
+
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            print("Repository successfully cloned!")
+            return True  # Cloning is considered an update
+        except subprocess.CalledProcessError as e:
+            print(f"{RED}Error occurred while cloning the repository:{RESET}")
+            print(f"{RED}{e.stderr}{RESET}")
+            return False  # Clone failed, no updates applied
+
     else:
         # Pull updates if the repository exists
         cmd = ["git", "-C", str(repo_dir), "pull", "origin", config["branch"]]
+        print(f"Running command: {' '.join(cmd)}")
 
-    print(f"Running command: {' '.join(cmd)}")
+        try:
+            result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            print(result.stdout)
 
-    try:
-        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        print(result.stdout)
-    except subprocess.CalledProcessError as e:
-        # Print the stderr from the failed command
-        print(f"{RED}Error occurred while executing git command:{RESET}")
-        print(f"{RED}{e.stderr}{RESET}")
-        print(f"{RED}Please Resolve Issue Above.{RESET}")
-        sys.exit(1)
+            # Determine if updates were pulled
+            if "Already up to date." in result.stdout:
+                print("No updates found.")
+                return False  # No updates
+            else:
+                print("Repository successfully updated!")
+                return True  # Updates were applied
 
-    print("Repository successfully pulled!")
+        except subprocess.CalledProcessError as e:
+            print(f"{RED}Error occurred while executing git pull command:{RESET}")
+            print(f"{RED}{e.stderr}{RESET}")
+            print(f"{RED}No Updates were able to be applied{RESET}")
+            return False  # Pull failed
 
 
 @cli_function
@@ -175,7 +191,45 @@ def test():
     print_masthead()
 
     config = load_config()
-    startup_cmd = config.get("startup_cmd", "docker-compose up")
+    # pass in a no-op false argument, so that the test function never wakes up to poll.
+    run(config, lambda: False, lambda: False)
+
+@cli_function
+def host():
+    """Use the conf.json file, to watch a repository, pull new versions automatically, and continuously re-deploy using the configured command."""
+    print_masthead()
+
+    config = load_config()
+
+    next_poll = int(time.time()) + config.get("poll_period")
+
+    def shouldPoll():
+        nonlocal next_poll
+        if next_poll < int(time.time()):
+            next_poll = int(time.time()) + config.get("poll_period")
+            return True
+        return False
+
+    def check_for_updates():
+        return pull()
+
+
+    while True:
+        # run will loop continually, if updates are found, it will pull them and then stop running.  This loop will then immediately re-run the command again.
+        run(config, shouldPoll, check_for_updates)
+
+
+@cli_function
+def view_config():
+    """Display the current configuration."""
+    print_masthead()
+
+    config = load_config()
+    print("Current Configuration:")
+    print(f"{MAGENTA}{json.dumps(config, indent=4)}{RESET}")
+
+def run(config: dict, pollCheck: Callable[[], bool], poll: Callable[[], bool]):
+    startup_cmd = config.get("startup_cmd")
 
     # Change directory to SERVICES_DIR before running the command
     os.chdir(SERVICES_DIR)
@@ -202,7 +256,15 @@ def test():
             # If both stdout and stderr are empty, and the process is finished, break the loop
             if stdout_line == '' and stderr_line == '' and process.poll() is not None:
                 break
-        time.sleep(.1)
+            time.sleep(.1)
+            if pollCheck():
+                print("Checking GIT for Updates")
+                if poll():
+                    print("Updates found, Tearing down system")
+                    break
+                else:
+                    print("No Updates Found")
+
     except KeyboardInterrupt:
         print("\nProcess interrupted. Terminating...")
         process.terminate()
@@ -212,20 +274,6 @@ def test():
     process.wait()  # Ensure the process has fully completed
 
     print("Command execution finished.")
-
-@cli_function
-def host():
-    """Use the conf.json file, to watch a repository, pull new versions automatically, and continuously re-deploy using the configured command."""
-    # TODO: make this an overload of the "test" command, which also calls the "pull" command with printing disabled, and then scans its output for "no updates", if there are no updates, then do nothing, if there are updates, re-run the docker compose.
-
-@cli_function
-def view_config():
-    """Display the current configuration."""
-    print_masthead()
-
-    config = load_config()
-    print("Current Configuration:")
-    print(f"{MAGENTA}{json.dumps(config, indent=4)}{RESET}")
 
 if __name__ == "__main__":
     cli()
